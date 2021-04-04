@@ -1,4 +1,4 @@
-// Copyright 2020, Steve Macenski
+// Copyright 2021, Steve Macenski
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -111,16 +111,19 @@ void OusterDriver::onConfigure()
     exit(-1);
   }
 
+  _preprocessor_manager = std::make_shared<sensor::PreprocessorManager>(
+    _sensor->getMetadata(), _sensor->getPacketFormat());
+
   if (_use_system_default_qos) {
     RCLCPP_INFO(
       this->get_logger(), "Using system defaults QoS for sensor data");
     _data_processors = ros2_ouster::createProcessors(
       shared_from_this(), _sensor->getMetadata(), _imu_data_frame, _laser_data_frame,
-      rclcpp::SystemDefaultsQoS(), _sensor->getPacketFormat(), _proc_mask);
+      rclcpp::SystemDefaultsQoS(), _sensor->getPacketFormat(), _preprocessor_manager, _proc_mask);
   } else {
     _data_processors = ros2_ouster::createProcessors(
       shared_from_this(), _sensor->getMetadata(), _imu_data_frame, _laser_data_frame,
-      rclcpp::SensorDataQoS(), _sensor->getPacketFormat(), _proc_mask);
+      rclcpp::SensorDataQoS(), _sensor->getPacketFormat(), _preprocessor_manager, _proc_mask);
   }
 
   _tf_b = std::make_unique<tf2_ros::StaticTransformBroadcaster>(
@@ -210,6 +213,8 @@ void OusterDriver::processData()
       this->_use_ros_time ? this->now().nanoseconds() : 0;
 
     if (_lidar_packet_data) {
+      _preprocessor_manager->preprocess(_lidar_packet_data, override_ts);
+
       key_its = _data_processors.equal_range(ouster::sensor::client_state::LIDAR_DATA);
 
       for (DataProcessorMapIt it = key_its.first; it != key_its.second; it++) {
